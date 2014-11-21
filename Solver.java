@@ -3,7 +3,6 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -154,15 +153,19 @@ public class Solver {
 					    	copy = copy + instantiateMap.get("[object]") + " ";
 					    	continue;
 					    }
-					   // System.out.println(instantiateMap);
 					    Pattern templatePattern = Pattern.compile("\\[[a-z]+\\]");
 					    matcher = templatePattern.matcher(component);
 					    if (matcher.find()) {
 					    	String match = "";
 						    for (String word : allWords) {
-						    	if (word.contains("["+sentenceNo+"]") && !instantiateMap.containsValue(word.replaceFirst("\\[\\d\\]", ""))) {
-						    		match = word.replaceFirst("\\[\\d\\]", "");
-						    		break;
+						    	String typePlaceholder = typeSchema(schemaNo);
+						    	String givenType = word.substring(word.length()-7, word.length());
+						    	if (typePlaceholder.equals(givenType) && word.contains("["+sentenceNo+"]")) {
+						    		word = word.substring(0,word.length()-7);
+						    		if (!instantiateMap.containsValue(word.replaceFirst("\\[\\d\\]", ""))) {
+						    			match = word.replaceFirst("\\[\\d\\]", "");
+						    			break;
+						    		}
 						    	}
 						    }
 					    	instantiateMap.put(matcher.group(),match);
@@ -308,7 +311,7 @@ public class Solver {
  	public static void main(String args[]) {
  		buildMap();
  		buildSchema();
-		String input = "There are 4 apples in a basket. She put 2 apples into the basket. "+
+		String input = "There are 4 apples in a basket. Ruth put 2 apples into the basket. "+
 					   "How many apples are there in the basket now?";
 		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
@@ -334,8 +337,6 @@ public class Solver {
 	    				System.out.println("Trigger "+type);
 	    			}
 	    		}
-	    		if (pos.contains("NN"))
-	    			allWords.add("["+counter+"]"+lemma);
 	    		if (pos.contains("W"))
 	    			questionSentence = counter;
 	    	}
@@ -345,7 +346,16 @@ public class Solver {
 	    	//assumes one entity per sentence
 	    	IndexedWord entity = null;
 	    	for (SemanticGraphEdge edge : edges) {
-	    		System.out.println(edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
+	    		System.out.println(edge.getTarget().toString());
+	    		if (edge.getTarget().toString().contains("NN")) {
+	    			System.out.println("in"+edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());	
+	    			if (edge.getRelation().toString().equals("nsubj"))
+	    				allWords.add("["+counter+"]"+edge.getTarget().lemma()+"[owner]");
+	    			else if (edge.getRelation().toString().contains("prep"))
+	    				allWords.add("["+counter+"]"+edge.getTarget().lemma()+"[place]");
+	    			else if (edge.getRelation().toString().contains("obj"))
+	    				allWords.add("["+counter+"]"+edge.getTarget().lemma()+"[object]");
+	    		}
 	    		if (edge.getRelation().toString().equals("num")) {
 	    			Entity newEntity = new Entity();
 	    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
@@ -356,16 +366,13 @@ public class Solver {
 	    			newEntity.value = Integer.parseInt(NumberNameToNumber.convert(edge.getTarget().originalText()));
 	    			//System.out.println(newEntity.name + "|" + newEntity.value);			
 	    			allEntities.add(newEntity);
-	    			break;
 	    		}
 	    	}
 	    	for (SemanticGraphEdge edge : edges) {
-	    		System.out.println(edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
+	    		//System.out.println(edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
 	    		if (edge.getRelation().toString().equals("nsubj")) {
 	    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
 	    				continue;
-	    			System.out.println("e"+entity+"|"+edge.getTarget());
-	    			System.out.println(edge.getTarget().equals(entity));
 	    			if (edge.getTarget().equals(entity)) {
 	    				String pos = edge.getSource().toString();
 	    				if (pos.contains("VBD") || pos.contains("VBN"))
@@ -377,6 +384,7 @@ public class Solver {
 	    	}
 	    	counter++;
 	    }
+	    System.out.println(allWords);
 	    instantiateSchema(type,sentenceNo);
 	    completeSchema(sentenceNo,questionSentence);
 	    solve();
