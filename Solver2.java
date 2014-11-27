@@ -50,6 +50,8 @@ public class Solver2 {
     //static HashMap <String,String> instantiateMap = new HashMap<String,String>();
     //static String[] instantiatedSchema = new String[3];
 	static ArrayList<Instantiation> instantiatedSchemas = new ArrayList<Instantiation>();
+	static ArrayList<Instantiation> acceptedSchemas = new ArrayList<Instantiation>();
+	
     public static String typeSchema(Schema s) {
     	if (s.name.equals("Transfer in Place") || s.name.equals("Transfer out Place") || s.name.equals("Creation Place") || s.name.equals("Termination Place"))
     		return "[place]";
@@ -84,6 +86,10 @@ public class Solver2 {
 		verbCategory.put("destroy","Termination");
 		verbCategory.put("die","Termination");
 		verbCategory.put("kill","Termination");
+		verbCategory.put("more","ComparePlus");
+		verbCategory.put("great","ComparePlus");
+		
+		
 	}
 	public static void buildSchema() {
 		Schema transferInPlace = new Schema();
@@ -133,6 +139,12 @@ public class Solver2 {
 		terminationOwnership.formula = "S + T = R";
 		terminationOwnership.type = "Termination";
 		terminationPlace.name = "Termination Ownership";
+		schemas.add(terminationOwnership);
+		Schema moreThan = new Schema();
+		moreThan.template = "[owner] has [X] [object] [more] than [Y]. [owner] has [Z] [object]";
+		moreThan.formula = "X + Y = Z";
+		moreThan.type = "moreThan";
+		moreThan.name = "ComparePlus";
 		schemas.add(terminationOwnership);
 				
 	}
@@ -220,6 +232,7 @@ public class Solver2 {
 		String formula = inst.s.formula;
 		HashMap <String, String> instantiateMap = inst.instantiateMap;
 		String[] elements = formula.split(" ");
+		acceptedSchemas.remove(inst);
 		for (int i=0; i<elements.length; i++) {
 			String element = elements[i];
 			if (element.equals("+") || element.equals("=")) 
@@ -246,6 +259,7 @@ public class Solver2 {
 			}
 		}
 		System.out.println("Answer:");
+		String[] answerSchema = new String[3];
 		for (int i = 0; i < 3; i++) {
 			String copy = "";
 			String[] components = inst.s.template.split("\\+")[i].split(" ");
@@ -259,8 +273,11 @@ public class Solver2 {
 				
 			}
 			System.out.println(copy);
+			answerSchema[i] = copy;
 		}
-		
+		inst.instantiateMap = instantiateMap;
+		inst.instantiatedSchema = answerSchema;
+		acceptedSchemas.add(inst);
 	}
 	public static String expandPremises(String initialPremises) {
 		String ans = null;
@@ -339,7 +356,7 @@ public class Solver2 {
 		String[] instantiatedSchema = curInstantiation.instantiatedSchema;
 		Schema s = curInstantiation.s;
 		String instantiation = instantiateMap.get(typeSchema(curInstantiation.s));
-		System.out.println(allTenses+"|"+instantiation);
+		System.out.println(instantiation);
 		String[] stmts = s.template.split("\\+");
 		int index = 0;
 		for (String word : allWords) {
@@ -348,12 +365,13 @@ public class Solver2 {
 					System.out.println(word);
 					//assumes single digit
 					int no = Integer.parseInt(word.charAt(1)+"");
-					for (String tenses : allTenses) {
-						int tenseSentence = Integer.parseInt(tenses.charAt(1)+"");
-						if (no == tenseSentence) { 
-							if (tenses.contains("past") && no>sentenceNo)
+					for (String tense : allTenses) {
+						int tenseSentence = Integer.parseInt(tense.charAt(1)+"");
+						String verb = tense.substring(tense.lastIndexOf("[")+1, tense.length()-1);
+						if (no == tenseSentence && !verbCategory.containsKey(verb)) { 
+							if (tense.contains("past") && no>sentenceNo)
 								index = 0;
-							else if (!tenses.contains("past") && no>sentenceNo)
+							else if (!tense.contains("past") && no>sentenceNo)
 								index = 2; 
 							else if (no<sentenceNo)
 								index = 0;
@@ -421,7 +439,18 @@ public class Solver2 {
 		System.out.println(instantiateMap);
 		curInstantiation.instantiatedSchema = instantiatedSchema;
 		curInstantiation.instantiateMap = instantiateMap;
-		solve(curInstantiation);
+		boolean accepted = true;
+		for (int i = 0; i < 3; i++) {
+			String stmt = instantiatedSchema[i];
+			if (stmt == null) {
+				accepted = false;
+				break;
+			}
+		}
+		if (accepted) {
+			acceptedSchemas.add(curInstantiation);
+			solve(curInstantiation);
+		}
 	}
  	public static void main(String args[]) {
  		buildMap();
@@ -467,22 +496,23 @@ public class Solver2 {
 	    		}
 	    	}
 	    	for (SemanticGraphEdge edge : edges) {
-	    		//System.out.println(edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
-	    		if (edge.getRelation().toString().equals("nsubj")) {
+	    		System.out.println("aaa"+edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
+	    		if (edge.getRelation().toString().equals("nsubj") || edge.getRelation().toString().equals("dobj")) {
 	    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
 	    				continue;
 	    			if (edge.getTarget().equals(entity)) {
 	    				String pos = edge.getSource().toString();
 	    				if (pos.contains("VBD") || pos.contains("VBN"))
-		    				allTenses.add("["+sentenceNo+"] "+"past");
+		    				allTenses.add("["+sentenceNo+"] "+"past ["+edge.getSource().lemma()+"]");
 		    			else
-		    				allTenses.add("["+sentenceNo+"] "+"present");
+		    				allTenses.add("["+sentenceNo+"] "+"present ["+edge.getSource().lemma()+"]");
 		    		}
 	    		}
 	    	}
 	    	sentenceNo++;
 	    }
 	    System.out.println(allWords);
+	    System.out.println(allTenses);
 	    sentenceNo = 1;
 	    for(CoreMap sentence: sentences) {
 		    for (CoreLabel token: sentence.get(TokensAnnotation.class)) {
