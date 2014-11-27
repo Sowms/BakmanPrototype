@@ -134,7 +134,7 @@ public class Solver2 {
 		terminationOwnership.type = "Termination";
 		terminationPlace.name = "Termination Ownership";
 		schemas.add(terminationOwnership);
-		
+				
 	}
 	public static void instantiateSchema(String type, String lemma, int sentenceNo) {
 		HashMap <String,String> instantiateMap = new HashMap<String,String>();
@@ -262,10 +262,75 @@ public class Solver2 {
 		}
 		
 	}
-	public static String expand(String initialPremises) {
+	public static String expandPremises(String initialPremises) {
 		String ans = null;
+		System.out.println(initialPremises);
 		String[] premises = initialPremises.split("\n");
-		
+		ArrayList<String> newPremises = new ArrayList<String>();
+		ArrayList<String> firstType = new ArrayList<String>();
+		firstType.add("give");
+		firstType.add("sell");
+		firstType.add("pay");
+		firstType.add("donate");
+		ArrayList<String> secondType = new ArrayList<String>();
+		secondType.add("steal");
+		secondType.add("buy");
+		Properties props = new Properties();
+	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
+	    StanfordCoreNLP pipeline = new StanfordCoreNLP(props);
+		for (String premise : premises) {
+			Annotation document = new Annotation(premise);
+		    pipeline.annotate(document);
+		    List<CoreMap> sentences = document.get(SentencesAnnotation.class);
+		    CoreMap sentence = sentences.get(0);
+		    boolean complexVerbFlag = false;
+		    for (CoreLabel token: sentence.get(TokensAnnotation.class)) {
+		    	String word = token.get(TextAnnotation.class);
+		    	String lemma;
+		    	lemma = token.get(LemmaAnnotation.class);
+		    	String pos = token.get(PartOfSpeechAnnotation.class);
+		    	System.out.println("expand"+word+"|"+pos+"|"+lemma+"|"+token.get(NamedEntityTagAnnotation.class));
+		    	if (pos.contains("VB")) {
+		    		if (firstType.contains(lemma) || secondType.contains(lemma)) {
+		    			complexVerbFlag = true;
+		    			SemanticGraph dependencies = sentence.get(CollapsedCCProcessedDependenciesAnnotation.class);
+		    	    	System.out.println(dependencies);
+		    	    	ArrayList<SemanticGraphEdge> edges = (ArrayList<SemanticGraphEdge>) dependencies.edgeListSorted();
+		    	    	String owner1 = null, owner2 = null, entity = "";
+		    	    	for (SemanticGraphEdge edge : edges) {
+		    	    		System.out.println(edge.getTarget().toString());
+		    	    		if (edge.getTarget().toString().contains("NN")) {
+		    	    			System.out.println("in"+edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());	
+		    	    			if (edge.getRelation().toString().equals("nsubj"))
+		    	    				owner1 = edge.getTarget().lemma();
+		    	    			else if (!edge.getRelation().toString().contains("dobj"))
+		    	    				owner2 = edge.getTarget().lemma();
+		    	    		}
+		    	    		if (edge.getRelation().toString().equals("num")) {
+		    	    			entity = entity + edge.getTarget().lemma();
+		    	    			entity = entity + " " + edge.getSource().originalText();
+		    	    		}
+		    	    	}
+		    	    	if (firstType.contains(lemma)) {
+		    	    		newPremises.add(owner1 +" forfeited "+entity+".");
+		    	    		newPremises.add(owner2 +" got "+entity+".");
+		    	    	}
+		    	    	else {
+		    	    		newPremises.add(owner1 +" got "+entity+".");
+		    	    		newPremises.add(owner2 +" forfeited "+entity+".");
+		    	    	}
+		    		}
+		    		break;
+		    	}
+		    }
+			if (!complexVerbFlag)
+				newPremises.add(premise);
+		}
+		ans = "";
+		for (String premise : newPremises) {
+			ans = ans + premise + "\n";
+		}
+		System.out.println(ans);
 		return ans;
 	}
 	public static void completeSchema(int sentenceNo, Instantiation curInstantiation) {
@@ -361,12 +426,11 @@ public class Solver2 {
  	public static void main(String args[]) {
  		buildMap();
  		buildSchema();
-		String input = Parser.parse("Ruth had 3 apples. She put 2 apples into a basket. How many apples are there@"
-				+ " in the basket now, if in the beginning there were 4 apples in the basket? ");
+		String input = Parser.parse("David gave 3 candies to Ruth, and John gave 2 candies to David. Now David has 4 candies more than Ruth has. How many candies does David have now, if Ruth had 7 candies in the beginning?");
+		String text = expandPremises(input);
 		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
 	    StanfordCoreNLP pipeline = new StanfordCoreNLP(props);
-	    String text = input; 
 	    Annotation document = new Annotation(text);
 	    pipeline.annotate(document);
 	    List<CoreMap> sentences = document.get(SentencesAnnotation.class);
@@ -387,7 +451,7 @@ public class Solver2 {
 	    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[owner]");
 	    			else if (edge.getRelation().toString().contains("prep"))
 	    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[place]");
-	    			else if (edge.getRelation().toString().contains("obj"))
+	    			else if (edge.getRelation().toString().contains("dobj"))
 	    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[object]");
 	    		}
 	    		if (edge.getRelation().toString().equals("num")) {
@@ -435,8 +499,6 @@ public class Solver2 {
 		    		    System.out.println("Trigger "+type);
 		    		}
 		    	}
-		 /*   	if (pos.contains("W"))
-		    		questionSentence = sentenceNo;*/
 		    }
 		    sentenceNo++;
 	    }

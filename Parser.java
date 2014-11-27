@@ -149,7 +149,7 @@ public class Parser {
 	}
 	public static void main(String[] args) {
 		System.out.println("Ruth had 3 apples. She put 2 apples into a basket. How many apples are there in the basket now, if in the beginning there were 4 apples in the basket? ");
-		System.out.println(parse("Ruth had 3 apples. She put 2 apples into a basket. How many apples are there in the basket now, if in the beginning there were 4 apples in the basket? "));	
+		System.out.println(parse("David gave Ruth 3 apples"));	
 		
 	}
 }
