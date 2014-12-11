@@ -2,6 +2,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -51,7 +52,9 @@ public class Solver2 {
     //static String[] instantiatedSchema = new String[3];
 	static ArrayList<Instantiation> instantiatedSchemas = new ArrayList<Instantiation>();
 	static ArrayList<Instantiation> acceptedSchemas = new ArrayList<Instantiation>();
-	
+	static ArrayList<String> allPremises = new ArrayList<String>();
+	static StanfordCoreNLP pipeline ;
+	static int sentenceNo;
     public static String typeSchema(Schema s) {
     	if (s.name.equals("Transfer in Place") || s.name.equals("Transfer out Place") || s.name.equals("Creation Place") || s.name.equals("Termination Place"))
     		return "[place]";
@@ -141,11 +144,11 @@ public class Solver2 {
 		terminationPlace.name = "Termination Ownership";
 		schemas.add(terminationOwnership);
 		Schema moreThan = new Schema();
-		moreThan.template = "[owner] has [X] [object] [more] than [Y]. [owner] has [Z] [object]";
+		moreThan.template = "[[owner]2] has [Y] [object] + [[owner]1] has [X] [object] [ComparePlus] than [[owner]2] + [[owner]1] has [Z] [object]";
 		moreThan.formula = "X + Y = Z";
-		moreThan.type = "moreThan";
-		moreThan.name = "ComparePlus";
-		schemas.add(terminationOwnership);
+		moreThan.type = "ComparePlus";
+		moreThan.name = "More Than";
+		schemas.add(moreThan);
 				
 	}
 	public static void instantiateSchema(String type, String lemma, int sentenceNo) {
@@ -168,6 +171,7 @@ public class Solver2 {
 					applicableSchemas.add(s);
 			}
 		}
+		System.out.println(applicableSchemas);
 		for (Schema s : applicableSchemas) {
 			String[] stmts = s.template.split("\\+");
 			String copy = "";
@@ -191,6 +195,9 @@ public class Solver2 {
 					    	copy = copy + instantiateMap.get("[object]") + " ";
 					    	continue;
 					    }
+					    //Pattern complexTemplatePattern = Pattern.compile("\\[\\[[a-z]+\\]\\d\\]");
+					    //matcher = complexTemplatePattern.matcher(component);
+					    
 					    Pattern templatePattern = Pattern.compile("\\[[a-z]+\\]");
 					    matcher = templatePattern.matcher(component);
 					    if (matcher.find()) {
@@ -206,9 +213,12 @@ public class Solver2 {
 						    		}
 						    	}
 						    }
-					    	instantiateMap.put(matcher.group(),match);
-						    copy = copy + match + " ";
-						    continue;
+						    System.out.println("ccc"+component+"|"+match);
+						    if (!match.equals("")) {
+						    	instantiateMap.put(component,match);
+						    	copy = copy + match + " ";
+						    	continue;
+						    }
 						} 
 					    if (instantiateMap.containsKey(component)) {
 					    	copy = copy + instantiateMap.get(component) + " ";
@@ -222,6 +232,7 @@ public class Solver2 {
 			instantiatedSchema[1] = copy;
 		}
 		Instantiation currentInstantiation = new Instantiation();
+		
 		currentInstantiation.instantiatedSchema = instantiatedSchema;
 		currentInstantiation.instantiateMap = instantiateMap;
 		currentInstantiation.s = applicableSchemas.get(0);
@@ -233,11 +244,13 @@ public class Solver2 {
 		HashMap <String, String> instantiateMap = inst.instantiateMap;
 		String[] elements = formula.split(" ");
 		acceptedSchemas.remove(inst);
+		String question = null;
 		for (int i=0; i<elements.length; i++) {
 			String element = elements[i];
 			if (element.equals("+") || element.equals("=")) 
 				continue;
 			if (instantiateMap.get("["+element+"]").equals("?")) {
+				question = "["+element+"]";
 				if (i==0) {
 					int value1 = Integer.parseInt(instantiateMap.get("["+elements[2]+"]"));
 					int value2 = Integer.parseInt(instantiateMap.get("["+elements[4]+"]"));
@@ -262,10 +275,13 @@ public class Solver2 {
 		String[] answerSchema = new String[3];
 		for (int i = 0; i < 3; i++) {
 			String copy = "";
+			boolean isQuestion = false;
 			String[] components = inst.s.template.split("\\+")[i].split(" ");
 			for (String component : components) {
 				if (component.equals(""))
 					continue;
+				if (component.equals(question)) 
+					isQuestion = true;
 				if (component.contains("[")) 
 					copy = copy + instantiateMap.get(component) + " ";
 				else
@@ -274,9 +290,18 @@ public class Solver2 {
 			}
 			System.out.println(copy);
 			answerSchema[i] = copy;
+			if (isQuestion) {
+				allPremises.add(0,copy+".");
+				Annotation document = new Annotation(copy+".");
+			    pipeline.annotate(document);
+			    List<CoreMap> sentences = document.get(SentencesAnnotation.class);
+			    CoreMap sentence = sentences.get(0);
+			    processSentence(sentence,sentenceNo);
+			}
 		}
 		inst.instantiateMap = instantiateMap;
 		inst.instantiatedSchema = answerSchema;
+		System.out.println(allPremises);
 		acceptedSchemas.add(inst);
 	}
 	public static String expandPremises(String initialPremises) {
@@ -294,7 +319,7 @@ public class Solver2 {
 		secondType.add("buy");
 		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
-	    StanfordCoreNLP pipeline = new StanfordCoreNLP(props);
+	    pipeline = new StanfordCoreNLP(props);
 		for (String premise : premises) {
 			Annotation document = new Annotation(premise);
 		    pipeline.annotate(document);
@@ -348,19 +373,29 @@ public class Solver2 {
 			ans = ans + premise + "\n";
 		}
 		System.out.println(ans);
+		allPremises = newPremises;
 		return ans;
 	}
 	public static void completeSchema(int sentenceNo, Instantiation curInstantiation) {
-		System.out.print(curInstantiation.instantiateMap);
+		System.out.println(curInstantiation.instantiateMap);
+		System.out.println("ha"+allWords);
+		System.out.println("ha"+allTenses);
 		HashMap<String,String> instantiateMap = curInstantiation.instantiateMap;
 		String[] instantiatedSchema = curInstantiation.instantiatedSchema;
 		Schema s = curInstantiation.s;
-		String instantiation = instantiateMap.get(typeSchema(curInstantiation.s));
-		System.out.println(instantiation);
+		ArrayList<String> instantiations = new ArrayList<String>(); 
+		for (Map.Entry<String, String> entry : instantiateMap.entrySet()) {
+		    System.out.println("Key = " + entry.getKey() + ", Value = " + entry.getValue());
+		    if (entry.getKey().contains(typeSchema(s))) 
+		    	instantiations.add(entry.getValue());
+		}
 		String[] stmts = s.template.split("\\+");
 		int index = 0;
 		for (String word : allWords) {
-			if (word.contains(instantiation)) {
+			String core = word.substring(3,word.length()-7);
+			if (core.contains("["))
+				continue;
+			if (instantiations.contains(core)) {
 				if(!word.contains(sentenceNo+"")) {
 					System.out.println(word);
 					//assumes single digit
@@ -369,12 +404,16 @@ public class Solver2 {
 						int tenseSentence = Integer.parseInt(tense.charAt(1)+"");
 						String verb = tense.substring(tense.lastIndexOf("[")+1, tense.length()-1);
 						if (no == tenseSentence && !verbCategory.containsKey(verb)) { 
-							if (tense.contains("past") && no>sentenceNo)
-								index = 0;
-							else if (!tense.contains("past") && no>sentenceNo)
-								index = 2; 
-							else if (no<sentenceNo)
-								index = 0;
+							if (!s.type.equals("ComparePlus")) {
+								if (tense.contains("past") && no>sentenceNo)
+									index = 0;
+								else if (!tense.contains("past") && no>sentenceNo)
+									index = 2; 
+								else if (no<sentenceNo)
+									index = 0;
+							}
+							else if (tense.contains("past"))
+								continue;
 							String copy = "";
 							for (Entity e : allEntities) {
 								if (e.sentence == no) {
@@ -452,10 +491,59 @@ public class Solver2 {
 			solve(curInstantiation);
 		}
 	}
+	public static void processSentence(CoreMap sentence, int sentenceNo) {
+		SemanticGraph dependencies = sentence.get(CollapsedCCProcessedDependenciesAnnotation.class);
+    	System.out.println(dependencies);
+    	ArrayList<SemanticGraphEdge> edges = (ArrayList<SemanticGraphEdge>) dependencies.edgeListSorted();
+    	//assumes one entity  per sentence
+    	IndexedWord entity = null;
+    	for (SemanticGraphEdge edge : edges) {
+    		System.out.println(edge.getTarget().toString());
+    		if (edge.getTarget().toString().contains("NN")) {
+    			System.out.println("in"+edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
+    			//assumes all proper nouns are people
+    			if (edge.getTarget().toString().contains("NNP"))
+    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[owner]");
+    			else if (edge.getRelation().toString().equals("nsubj"))
+    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[owner]");
+    			else if (edge.getRelation().toString().contains("prep"))
+    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[place]");
+    			else if (edge.getRelation().toString().contains("dobj"))
+    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[object]");
+    		}
+    		if (edge.getRelation().toString().equals("num")) {
+    			Entity newEntity = new Entity();
+    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
+    				continue;
+    			entity = edge.getSource();
+    			newEntity.name = edge.getSource().lemma();
+    			newEntity.sentence = sentenceNo;
+    			newEntity.value = Integer.parseInt(NumberNameToNumber.convert(edge.getTarget().originalText()));
+    			//System.out.println(newEntity.name + "|" + newEntity.value);			
+    			allEntities.add(newEntity);
+    		}
+    	}
+    	for (SemanticGraphEdge edge : edges) {
+    		System.out.println("aaa"+edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
+    		if (edge.getRelation().toString().equals("nsubj") || edge.getRelation().toString().equals("dobj")) {
+    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
+    				continue;
+    			if (edge.getTarget().equals(entity)) {
+    				String pos = edge.getSource().toString();
+    				if (pos.contains("VBD") || pos.contains("VBN"))
+	    				allTenses.add("["+sentenceNo+"] "+"past ["+edge.getSource().lemma()+"]");
+	    			else
+	    				allTenses.add("["+sentenceNo+"] "+"present ["+edge.getSource().lemma()+"]");
+	    		}
+    		}
+    	}
+    	System.out.println("In"+sentenceNo+"|"+allWords);
+	}
  	public static void main(String args[]) {
  		buildMap();
  		buildSchema();
-		String input = Parser.parse("David gave 3 candies to Ruth, and John gave 2 candies to David. Now David has 4 candies more than Ruth has. How many candies does David have now, if Ruth had 7 candies in the beginning?");
+		String input = Parser.parse("Ruth had 5 nuts more than Dan had. Ruth gave Dan 3 nuts. Dan gave 2 nuts to David. Now Dan has 4 nuts and David has 6 nuts. How many nuts does Ruth have now?"
+				+ "");
 		String text = expandPremises(input);
 		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
@@ -463,57 +551,16 @@ public class Solver2 {
 	    Annotation document = new Annotation(text);
 	    pipeline.annotate(document);
 	    List<CoreMap> sentences = document.get(SentencesAnnotation.class);
-	    int sentenceNo = 1;
+	    sentenceNo = 1;
 	    String type = "";
 	    for(CoreMap sentence: sentences) {
 	    	System.out.println(sentence);
-	    	SemanticGraph dependencies = sentence.get(CollapsedCCProcessedDependenciesAnnotation.class);
-	    	System.out.println(dependencies);
-	    	ArrayList<SemanticGraphEdge> edges = (ArrayList<SemanticGraphEdge>) dependencies.edgeListSorted();
-	    	//assumes one entity  per sentence
-	    	IndexedWord entity = null;
-	    	for (SemanticGraphEdge edge : edges) {
-	    		System.out.println(edge.getTarget().toString());
-	    		if (edge.getTarget().toString().contains("NN")) {
-	    			System.out.println("in"+edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());	
-	    			if (edge.getRelation().toString().equals("nsubj"))
-	    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[owner]");
-	    			else if (edge.getRelation().toString().contains("prep"))
-	    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[place]");
-	    			else if (edge.getRelation().toString().contains("dobj"))
-	    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[object]");
-	    		}
-	    		if (edge.getRelation().toString().equals("num")) {
-	    			Entity newEntity = new Entity();
-	    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
-	    				continue;
-	    			entity = edge.getSource();
-	    			newEntity.name = edge.getSource().lemma();
-	    			newEntity.sentence = sentenceNo;
-	    			newEntity.value = Integer.parseInt(NumberNameToNumber.convert(edge.getTarget().originalText()));
-	    			//System.out.println(newEntity.name + "|" + newEntity.value);			
-	    			allEntities.add(newEntity);
-	    		}
-	    	}
-	    	for (SemanticGraphEdge edge : edges) {
-	    		System.out.println("aaa"+edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
-	    		if (edge.getRelation().toString().equals("nsubj") || edge.getRelation().toString().equals("dobj")) {
-	    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
-	    				continue;
-	    			if (edge.getTarget().equals(entity)) {
-	    				String pos = edge.getSource().toString();
-	    				if (pos.contains("VBD") || pos.contains("VBN"))
-		    				allTenses.add("["+sentenceNo+"] "+"past ["+edge.getSource().lemma()+"]");
-		    			else
-		    				allTenses.add("["+sentenceNo+"] "+"present ["+edge.getSource().lemma()+"]");
-		    		}
-	    		}
-	    	}
+	    	processSentence(sentence,sentenceNo);
 	    	sentenceNo++;
 	    }
 	    System.out.println(allWords);
 	    System.out.println(allTenses);
-	    sentenceNo = 1;
+	    int counter = 1;
 	    for(CoreMap sentence: sentences) {
 		    for (CoreLabel token: sentence.get(TokensAnnotation.class)) {
 		    	String word = token.get(TextAnnotation.class);
@@ -521,16 +568,16 @@ public class Solver2 {
 		    	lemma = token.get(LemmaAnnotation.class);
 		    	String pos = token.get(PartOfSpeechAnnotation.class);
 		    	System.out.println(word+"|"+pos+"|"+lemma+"|"+token.get(NamedEntityTagAnnotation.class));
-		    	if (pos.contains("VB")) {
+		    	if (pos.contains("VB") || pos.contains("RBR")) {
 		    		if (verbCategory.containsKey(lemma)) {
 		    			type = verbCategory.get(lemma);
-		    			instantiateSchema(type,lemma,sentenceNo);
+		    			instantiateSchema(type,lemma,counter);
 		    			//completeSchema(sentenceNo,questionSentence);
 		    		    System.out.println("Trigger "+type);
 		    		}
 		    	}
 		    }
-		    sentenceNo++;
+		    counter++;
 	    }
 	}
 }
