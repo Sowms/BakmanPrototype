@@ -4,6 +4,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,7 +47,7 @@ public class Solver2 {
 	static ArrayList<Schema> schemas = new ArrayList<Schema>();
 	static LinkedHashSet<String> allWords = new LinkedHashSet<String>();
     static ArrayList<Entity> allEntities = new ArrayList<Entity>();
-    static ArrayList<String> allTenses = new ArrayList<String>();
+    static TreeSet<String> allTenses = new TreeSet<String>();
     //static int schemaNo = 0;
     //static HashMap <String,String> instantiateMap = new HashMap<String,String>();
     //static String[] instantiatedSchema = new String[3];
@@ -147,11 +148,17 @@ public class Solver2 {
 		moreThan.template = "[[owner]2] has [Y] [object] + [[owner]1] has [X] [object] [ComparePlus] than [[owner]2] + [[owner]1] has [Z] [object]";
 		moreThan.formula = "X + Y = Z";
 		moreThan.type = "ComparePlus";
-		moreThan.name = "More Than";
+		moreThan.name = "More Than Present";
 		schemas.add(moreThan);
+		Schema moreThanPast = new Schema();
+		moreThanPast.template = "[[owner]2] had [Y] [object] + [[owner]1] had [X] [object] [ComparePlus] than [[owner]2] + [[owner]1] had [Z] [object]";
+		moreThanPast.formula = "X + Y = Z";
+		moreThanPast.type = "ComparePlus";
+		moreThanPast.name = "More Than Past";
+		schemas.add(moreThanPast);
 				
 	}
-	public static void instantiateSchema(String type, String lemma, int sentenceNo) {
+	public static void instantiateSchema(String type, String lemma, int sentenceNo, String pos) {
 		HashMap <String,String> instantiateMap = new HashMap<String,String>();
 		instantiateMap.put("["+type+"]", lemma);
 		String[] instantiatedSchema = new String[3];
@@ -160,6 +167,10 @@ public class Solver2 {
 			if (s.type.equals(type)) {
 				String fineType = typeSchema(s);
 				System.out.print(fineType);
+				if (s.name.contains("Present") && ((pos.equals("VBN") || pos.equals("VBD"))))
+					continue;
+				if (s.name.contains("Past") && !pos.equals("VBN") && !pos.equals("VBD"))
+					continue;
 				boolean typeFlag = false;
 				for (String word : allWords) {
 					if (word.contains(fineType)) {
@@ -167,11 +178,13 @@ public class Solver2 {
 						break;
 					}
 				}
-				if (typeFlag)
+				if (typeFlag) {
+					System.out.println("acc"+lemma+"|"+s.name+"|"+pos);
 					applicableSchemas.add(s);
+				}
 			}
 		}
-		System.out.println(applicableSchemas);
+		System.out.println("app"+applicableSchemas);
 		for (Schema s : applicableSchemas) {
 			String[] stmts = s.template.split("\\+");
 			String copy = "";
@@ -237,9 +250,9 @@ public class Solver2 {
 		currentInstantiation.instantiateMap = instantiateMap;
 		currentInstantiation.s = applicableSchemas.get(0);
 		instantiatedSchemas.add(currentInstantiation);
-		completeSchema(sentenceNo,currentInstantiation);
+		completeSchema(sentenceNo,currentInstantiation, pos);
 	}
-	public static void solve(Instantiation inst) {
+	public static void solve(int sentenceNo, int otherSentence, Instantiation inst, boolean changeTenseFlag) {
 		String formula = inst.s.formula;
 		HashMap <String, String> instantiateMap = inst.instantiateMap;
 		String[] elements = formula.split(" ");
@@ -291,12 +304,33 @@ public class Solver2 {
 			System.out.println(copy);
 			answerSchema[i] = copy;
 			if (isQuestion) {
-				allPremises.add(0,copy+".");
-				Annotation document = new Annotation(copy+".");
+				
+				/*boolean changeFlag = false;
+				for (String word : allWords) {
+					
+				}*/
+				if (changeTenseFlag) 
+					copy = copy.replace("had", "has");
+				allPremises.add(sentenceNo-1,copy+".");
+				allPremises.remove(sentenceNo);
+				allPremises.remove(otherSentence - 1);
+				String text = "";
+				for (String premise : allPremises) {
+					text = text + premise + "\n";
+				}
+				allPremises = new ArrayList<String>();
+				allWords = new LinkedHashSet<String>();
+				allTenses = new TreeSet<String>();
+				instantiatedSchemas = new ArrayList<Instantiation>();
+				acceptedSchemas = new ArrayList<Instantiation>();
+				allEntities = new ArrayList<Entity>();
+				String input = expandPremises(text);
+				solveProb(input);
+				/*Annotation document = new Annotation(copy+".");
 			    pipeline.annotate(document);
 			    List<CoreMap> sentences = document.get(SentencesAnnotation.class);
 			    CoreMap sentence = sentences.get(0);
-			    processSentence(sentence,sentenceNo);
+			    processSentence(sentence,sentenceNo);*/
 			}
 		}
 		inst.instantiateMap = instantiateMap;
@@ -376,11 +410,13 @@ public class Solver2 {
 		allPremises = newPremises;
 		return ans;
 	}
-	public static void completeSchema(int sentenceNo, Instantiation curInstantiation) {
+	public static void completeSchema(int sentenceNo, Instantiation curInstantiation, String pos) {
 		System.out.println(curInstantiation.instantiateMap);
 		System.out.println("ha"+allWords);
 		System.out.println("ha"+allTenses);
 		HashMap<String,String> instantiateMap = curInstantiation.instantiateMap;
+		ArrayList<String> eventTrackers = new ArrayList<String>();
+		boolean changeTenseFlag = false;
 		String[] instantiatedSchema = curInstantiation.instantiatedSchema;
 		Schema s = curInstantiation.s;
 		ArrayList<String> instantiations = new ArrayList<String>(); 
@@ -390,9 +426,10 @@ public class Solver2 {
 		    	instantiations.add(entry.getValue());
 		}
 		String[] stmts = s.template.split("\\+");
-		int index = 0;
+		int index = 0, otherSentence = 0;
 		for (String word : allWords) {
 			String core = word.substring(3,word.length()-7);
+			//skipping object
 			if (core.contains("["))
 				continue;
 			if (instantiations.contains(core)) {
@@ -403,18 +440,46 @@ public class Solver2 {
 					for (String tense : allTenses) {
 						int tenseSentence = Integer.parseInt(tense.charAt(1)+"");
 						String verb = tense.substring(tense.lastIndexOf("[")+1, tense.length()-1);
-						if (no == tenseSentence && !verbCategory.containsKey(verb)) { 
-							if (!s.type.equals("ComparePlus")) {
-								if (tense.contains("past") && no>sentenceNo)
-									index = 0;
+						//take care of multiple events for same actor
+						if (no == tenseSentence && verbCategory.containsKey(verb) && no>sentenceNo) {
+							eventTrackers.add(core);
+							System.out.println(no + "|" +sentenceNo + "|" + eventTrackers);
+							continue;
+						}
+						System.err.println("hiiii"+verb+"|"+core+"|"+no+"|"+tenseSentence+"|"+sentenceNo);
+						//need to generalize more
+						if (no == tenseSentence && verbCategory.containsKey(verb) && no < sentenceNo && !s.type.contains("Compare") && !verb.equals("more")) {
+							System.err.println("hiiii"+verb+"|"+core);
+							changeTenseFlag = true;
+						}
+						if (no == tenseSentence && verbCategory.containsKey(verb) && no > sentenceNo && !s.type.contains("Compare"))
+							return;
+						if (no == tenseSentence && !verbCategory.containsKey(verb) && !eventTrackers.contains(core)) { 
+							if (s.name.contains("Past") && tense.contains("present"))
+								continue;
+							if (!s.name.contains("Present") && !s.name.contains("Past")) {
+								if (tense.contains("past")) {
+									/*System.out.println(pos + "|" +no + "|" + sentenceNo);
+									if (pos.equals("VBD") || pos.equals("VBN")) {
+										if (no > sentenceNo)
+											index = 2;
+										else
+											index = 0;
+									}
+									else*/
+										index = 0;
+								}
 								else if (!tense.contains("past") && no>sentenceNo)
 									index = 2; 
 								else if (no<sentenceNo)
 									index = 0;
 							}
-							else if (tense.contains("past"))
+							else if (s.name.contains("Past") && !tense.contains("past"))
+								continue;
+							else if (s.name.contains("Present") && tense.contains("past"))
 								continue;
 							String copy = "";
+							otherSentence = no;
 							for (Entity e : allEntities) {
 								if (e.sentence == no) {
 									String[] components = stmts[index].split(" ");
@@ -488,7 +553,7 @@ public class Solver2 {
 		}
 		if (accepted) {
 			acceptedSchemas.add(curInstantiation);
-			solve(curInstantiation);
+			solve(sentenceNo, otherSentence, curInstantiation, changeTenseFlag);
 		}
 	}
 	public static void processSentence(CoreMap sentence, int sentenceNo) {
@@ -539,16 +604,8 @@ public class Solver2 {
     	}
     	System.out.println("In"+sentenceNo+"|"+allWords);
 	}
- 	public static void main(String args[]) {
- 		buildMap();
- 		buildSchema();
-		String input = Parser.parse("Ruth had 5 nuts more than Dan had. Ruth gave Dan 3 nuts. Dan gave 2 nuts to David. Now Dan has 4 nuts and David has 6 nuts. How many nuts does Ruth have now?"
-				+ "");
-		String text = expandPremises(input);
-		Properties props = new Properties();
-	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
-	    StanfordCoreNLP pipeline = new StanfordCoreNLP(props);
-	    Annotation document = new Annotation(text);
+ 	public static void solveProb(String input) {
+ 		Annotation document = new Annotation(input);
 	    pipeline.annotate(document);
 	    List<CoreMap> sentences = document.get(SentencesAnnotation.class);
 	    sentenceNo = 1;
@@ -562,6 +619,7 @@ public class Solver2 {
 	    System.out.println(allTenses);
 	    int counter = 1;
 	    for(CoreMap sentence: sentences) {
+	    	String verbTense = ""; 
 		    for (CoreLabel token: sentence.get(TokensAnnotation.class)) {
 		    	String word = token.get(TextAnnotation.class);
 		    	String lemma;
@@ -569,9 +627,27 @@ public class Solver2 {
 		    	String pos = token.get(PartOfSpeechAnnotation.class);
 		    	System.out.println(word+"|"+pos+"|"+lemma+"|"+token.get(NamedEntityTagAnnotation.class));
 		    	if (pos.contains("VB") || pos.contains("RBR")) {
+		    		if (pos.contains("VB")) {
+		    			verbTense = pos;
+		    		}
 		    		if (verbCategory.containsKey(lemma)) {
 		    			type = verbCategory.get(lemma);
-		    			instantiateSchema(type,lemma,counter);
+		    			if (pos.contains("RBR")) {
+		    				String deletedTense = "";
+		    				for (String tense : allTenses) {
+		    					if(tense.contains(counter+"")) {
+		    						deletedTense = tense;
+		    					}
+		    				}
+		    				allTenses.remove(deletedTense);
+		    				if (verbTense.contains("VBD") || verbTense.contains("VBN"))
+		    					allTenses.add("["+counter+"] past ["+lemma+"]");
+		    				else
+		    					allTenses.add("["+counter+"] present ["+lemma+"]");
+		    				instantiateSchema(type,lemma,counter,verbTense);
+		    			}
+		    			else
+		    				instantiateSchema(type,lemma,counter,pos);
 		    			//completeSchema(sentenceNo,questionSentence);
 		    		    System.out.println("Trigger "+type);
 		    		}
@@ -580,4 +656,14 @@ public class Solver2 {
 		    counter++;
 	    }
 	}
+ 	public static void main(String[] args) {
+ 		buildMap();
+ 		buildSchema();
+ 		Properties props = new Properties();
+	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
+	    pipeline = new StanfordCoreNLP(props);
+		String input = Parser.parse("Ruth had 3 apples. She put 2 apples into a basket. How many apples are there in the basket now, if in the beginning there were 4 apples in the basket?");
+		String text = expandPremises(input);
+ 		solveProb(text);
+ 	}
 }
