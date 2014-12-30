@@ -54,6 +54,7 @@ public class Solver2 {
 	static ArrayList<Instantiation> instantiatedSchemas = new ArrayList<Instantiation>();
 	static ArrayList<Instantiation> acceptedSchemas = new ArrayList<Instantiation>();
 	static ArrayList<String> allPremises = new ArrayList<String>();
+	static ArrayList<String> normalVerbs = new ArrayList<String>();
 	static StanfordCoreNLP pipeline ;
 	static int sentenceNo;
     public static String typeSchema(Schema s) {
@@ -91,8 +92,13 @@ public class Solver2 {
 		verbCategory.put("die","Termination");
 		verbCategory.put("kill","Termination");
 		verbCategory.put("more","ComparePlus");
+		normalVerbs.add("more");
 		verbCategory.put("great","ComparePlus");
-		
+		normalVerbs.add("great");
+		verbCategory.put("altogether","Combine");
+		normalVerbs.add("altogether");
+		verbCategory.put("less","CompareMinus");
+		normalVerbs.add("less");
 		
 	}
 	public static void buildSchema() {
@@ -127,6 +133,7 @@ public class Solver2 {
 		transferInPlace.name = "Creation Ownership";
 		schemas.add(creationOwnership);
 		Schema creationPlace = new Schema();
+		
 		creationPlace.template = "[place] had [R] [object] + [S] [object] [Creation] [place] + [place] has [T] [object]";
 		creationPlace.formula = "R + S = T";
 		creationPlace.type = "Creation";
@@ -144,6 +151,7 @@ public class Solver2 {
 		terminationOwnership.type = "Termination";
 		terminationPlace.name = "Termination Ownership";
 		schemas.add(terminationOwnership);
+		//compare schemas
 		Schema moreThan = new Schema();
 		moreThan.template = "[[owner]2] has [Y] [object] + [[owner]1] has [X] [object] [ComparePlus] than [[owner]2] + [[owner]1] has [Z] [object]";
 		moreThan.formula = "X + Y = Z";
@@ -156,7 +164,26 @@ public class Solver2 {
 		moreThanPast.type = "ComparePlus";
 		moreThanPast.name = "More Than Past";
 		schemas.add(moreThanPast);
-				
+		Schema lessThan = new Schema();
+		lessThan.template = "[[owner]2] has [Y] [object] + [[owner]1] has [X] [object] [CompareMinus] than [[owner]2] + [[owner]1] has [Z] [object]";
+		lessThan.formula = "Z + X = Y";
+		lessThan.type = "CompareMinus";
+		lessThan.name = "Less Than Present";
+		schemas.add(lessThan);
+		Schema lessThanPast = new Schema();
+		lessThanPast.template = "[[owner]2] had [Y] [object] + [[owner]1] had [X] [object] [CompareMinus] than [[owner]2] + [[owner]1] had [Z] [object]";
+		lessThanPast.formula = "Z + X = Y";
+		lessThanPast.type = "CompareMinus";
+		lessThanPast.name = "Less Than Past";
+		schemas.add(lessThanPast);
+		//combine schema
+		Schema combineOwner = new Schema();
+		combineOwner.template = "[[owner]1] has [Y] [object]  + [Combine] [[owner]1] and [[owner]2] has [Z] [object] + [[owner]2] has [X] [object]";
+		combineOwner.formula = "X + Y = Z";
+		combineOwner.type = "Combine";
+		combineOwner.name = "Combine Owner Present";
+		schemas.add(combineOwner);
+		
 	}
 	public static void instantiateSchema(String type, String lemma, int sentenceNo, String pos) {
 		HashMap <String,String> instantiateMap = new HashMap<String,String>();
@@ -448,11 +475,11 @@ public class Solver2 {
 						}
 						System.err.println("hiiii"+verb+"|"+core+"|"+no+"|"+tenseSentence+"|"+sentenceNo);
 						//need to generalize more
-						if (no == tenseSentence && verbCategory.containsKey(verb) && no < sentenceNo && !s.type.contains("Compare") && !verb.equals("more")) {
+						if (no == tenseSentence && verbCategory.containsKey(verb) && no < sentenceNo && !s.type.contains("Compare") && !s.type.contains("Combine") && !normalVerbs.contains(verb)) {
 							System.err.println("hiiii"+verb+"|"+core);
 							changeTenseFlag = true;
 						}
-						if (no == tenseSentence && verbCategory.containsKey(verb) && no > sentenceNo && !s.type.contains("Compare"))
+						if (no == tenseSentence && verbCategory.containsKey(verb) && no > sentenceNo && !s.type.contains("Compare") && !s.type.contains("Combine"))
 							return;
 						if (no == tenseSentence && !verbCategory.containsKey(verb) && !eventTrackers.contains(core)) { 
 							if (s.name.contains("Past") && tense.contains("present"))
@@ -626,13 +653,14 @@ public class Solver2 {
 		    	lemma = token.get(LemmaAnnotation.class);
 		    	String pos = token.get(PartOfSpeechAnnotation.class);
 		    	System.out.println(word+"|"+pos+"|"+lemma+"|"+token.get(NamedEntityTagAnnotation.class));
-		    	if (pos.contains("VB") || pos.contains("RBR")) {
+		    	if (pos.contains("VB") || pos.contains("RB") || pos.contains("JJR")) {
 		    		if (pos.contains("VB")) {
 		    			verbTense = pos;
 		    		}
 		    		if (verbCategory.containsKey(lemma)) {
 		    			type = verbCategory.get(lemma);
-		    			if (pos.contains("RBR")) {
+		    			System.out.println("Trigger "+type);
+		    			if (!pos.contains("VB")) {
 		    				String deletedTense = "";
 		    				for (String tense : allTenses) {
 		    					if(tense.contains(counter+"")) {
@@ -649,7 +677,6 @@ public class Solver2 {
 		    			else
 		    				instantiateSchema(type,lemma,counter,pos);
 		    			//completeSchema(sentenceNo,questionSentence);
-		    		    System.out.println("Trigger "+type);
 		    		}
 		    	}
 		    }
@@ -662,7 +689,7 @@ public class Solver2 {
  		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
 	    pipeline = new StanfordCoreNLP(props);
-		String input = Parser.parse("Ruth had 3 apples. She put 2 apples into a basket. How many apples are there in the basket now, if in the beginning there were 4 apples in the basket?");
+		String input = Parser.parse("Ram has 5 apples. Ram and Sita have 6 apples altogether. How many apples does Sita have?");
 		String text = expandPremises(input);
  		solveProb(text);
  	}
