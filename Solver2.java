@@ -55,6 +55,7 @@ public class Solver2 {
 	static ArrayList<Instantiation> acceptedSchemas = new ArrayList<Instantiation>();
 	static ArrayList<String> allPremises = new ArrayList<String>();
 	static ArrayList<String> normalVerbs = new ArrayList<String>();
+	static ArrayList<String> answers = new ArrayList<String>();
 	static StanfordCoreNLP pipeline ;
 	static int sentenceNo;
     public static String typeSchema(Schema s) {
@@ -87,7 +88,7 @@ public class Solver2 {
 		verbCategory.put("born","Creation");
 		verbCategory.put("create","Creation");
 		verbCategory.put("make","Creation");
-		verbCategory.put("eat","Termination");
+		//verbCategory.put("eat","Termination");
 		verbCategory.put("destroy","Termination");
 		verbCategory.put("die","Termination");
 		verbCategory.put("kill","Termination");
@@ -97,8 +98,11 @@ public class Solver2 {
 		normalVerbs.add("great");
 		verbCategory.put("altogether","Combine");
 		normalVerbs.add("altogether");
+		verbCategory.put("together","Combine");
+		normalVerbs.add("together");
 		verbCategory.put("less","CompareMinus");
 		normalVerbs.add("less");
+		
 		
 	}
 	public static void buildSchema() {
@@ -158,6 +162,12 @@ public class Solver2 {
 		moreThan.type = "ComparePlus";
 		moreThan.name = "More Than Present";
 		schemas.add(moreThan);
+		Schema moreThanSingle = new Schema();
+		moreThanSingle.template = "[owner] had [Y] [object] + [owner] has [X] [object] [ComparePlus] + [owner] has [Z] [object]";
+		moreThanSingle.formula = "X + Y = Z";
+		moreThanSingle.type = "ComparePlus";
+		moreThanSingle.name = "More Than Present";
+		schemas.add(moreThanSingle);
 		Schema moreThanPast = new Schema();
 		moreThanPast.template = "[[owner]2] had [Y] [object] + [[owner]1] had [X] [object] [ComparePlus] than [[owner]2] + [[owner]1] had [Z] [object]";
 		moreThanPast.formula = "X + Y = Z";
@@ -177,6 +187,19 @@ public class Solver2 {
 		lessThanPast.name = "Less Than Past";
 		schemas.add(lessThanPast);
 		//combine schema
+
+		Schema combineOwnerSingle = new Schema();
+		combineOwnerSingle.template = "[owner] has [Y] [object]  + [Combine] [owner] has [Z] [object] + [owner] has [X] [object]";
+		combineOwnerSingle.formula = "X + Y = Z";
+		combineOwnerSingle.type = "Combine";
+		combineOwnerSingle.name = "Combine Owner Single Present";
+		schemas.add(combineOwnerSingle);
+		Schema combineOwnerSinglePast = new Schema();
+		combineOwnerSinglePast.template = "[owner] had [Y] [object]  + [Combine] [owner] had [Z] [object] + [owner] had [X] [object]";
+		combineOwnerSinglePast.formula = "X + Y = Z";
+		combineOwnerSinglePast.type = "Combine";
+		combineOwnerSinglePast.name = "Combine Owner Single Past";
+		schemas.add(combineOwnerSinglePast);
 		Schema combineOwner = new Schema();
 		combineOwner.template = "[[owner]1] has [Y] [object]  + [Combine] [[owner]1] and [[owner]2] has [Z] [object] + [[owner]2] has [X] [object]";
 		combineOwner.formula = "X + Y = Z";
@@ -211,13 +234,15 @@ public class Solver2 {
 				}
 			}
 		}
-		System.out.println("app"+applicableSchemas);
+		System.out.println("app"+applicableSchemas.size());
 		for (Schema s : applicableSchemas) {
 			String[] stmts = s.template.split("\\+");
 			String copy = "";
 			//System.out.println(stmts[1]);
+			boolean doesEntityExist = false;
 			for (Entity e : allEntities) {
 				if (e.sentence == sentenceNo) {
+					doesEntityExist = true;
 					String[] components = stmts[1].split(" ");
 					for (String component : components) {
 						if(component.equals(""))
@@ -268,8 +293,38 @@ public class Solver2 {
 					}    
 				}
 			}
+			if (!doesEntityExist) {
+				String[] components = stmts[1].split(" ");
+				for (String component : components) {
+					if (component.equals(""))
+						continue;
+					for (String word : allWords) {
+						if(word.contains("object")) {
+							String tempWord = word.substring(0,word.length()-8);
+				    		instantiateMap.put("[object]",tempWord.replaceFirst("\\[\\d\\]", ""));
+				    		continue;
+						}
+						String typePlaceholder = typeSchema(s);
+				    	String givenType = word.substring(word.length()-7, word.length());
+				    	word = word.substring(0,word.length()-7);
+				    	if (component.contains(typePlaceholder) && typePlaceholder.equals(givenType) && word.contains("["+sentenceNo+"]") && !instantiateMap.containsValue(word.replaceFirst("\\[\\d\\]", ""))) 
+				    		instantiateMap.put(component,word.replaceFirst("\\[\\d\\]", ""));
+				    }
+					if(component.contains("[") && !component.matches("\\[[A-Z]\\]"))
+						copy = copy + instantiateMap.get(component)+ " ";
+					else if (component.matches("\\[[A-Z]\\]")) {
+						copy = copy + "? ";
+						instantiateMap.put(component, "?");
+					}
+					else
+						copy = copy + component+ " ";
+				}
+			}
 			System.out.println("mmm"+copy+"|"+instantiateMap);
-			instantiatedSchema[1] = copy;
+			if (!copy.contains("null")) {
+				instantiatedSchema[1] = copy;
+				break;
+			}
 		}
 		Instantiation currentInstantiation = new Instantiation();
 		
@@ -338,6 +393,7 @@ public class Solver2 {
 				}*/
 				if (changeTenseFlag) 
 					copy = copy.replace("had", "has");
+				answers.add(copy);
 				allPremises.add(sentenceNo-1,copy+".");
 				allPremises.remove(sentenceNo);
 				allPremises.remove(otherSentence - 1);
@@ -399,7 +455,8 @@ public class Solver2 {
 		    			SemanticGraph dependencies = sentence.get(CollapsedCCProcessedDependenciesAnnotation.class);
 		    	    	System.out.println(dependencies);
 		    	    	ArrayList<SemanticGraphEdge> edges = (ArrayList<SemanticGraphEdge>) dependencies.edgeListSorted();
-		    	    	String owner1 = null, owner2 = null, entity = "";
+		    	    	String owner1 = null, owner2 = null, object = "", entity = "";
+		    	    	boolean isEntity = false;
 		    	    	for (SemanticGraphEdge edge : edges) {
 		    	    		System.out.println(edge.getTarget().toString());
 		    	    		if (edge.getTarget().toString().contains("NN")) {
@@ -408,12 +465,17 @@ public class Solver2 {
 		    	    				owner1 = edge.getTarget().lemma();
 		    	    			else if (!edge.getRelation().toString().contains("dobj"))
 		    	    				owner2 = edge.getTarget().lemma();
+		    	    			else if (edge.getRelation().toString().contains("dobj"))
+		    	    				object = edge.getTarget().lemma();
 		    	    		}
 		    	    		if (edge.getRelation().toString().equals("num")) {
+		    	    			isEntity = true;
 		    	    			entity = entity + edge.getTarget().lemma();
 		    	    			entity = entity + " " + edge.getSource().originalText();
 		    	    		}
 		    	    	}
+		    	    	if (!isEntity)
+		    	    		entity = "Q " + object;
 		    	    	if (firstType.contains(lemma)) {
 		    	    		newPremises.add(owner1 +" forfeited "+entity+".");
 		    	    		newPremises.add(owner2 +" got "+entity+".");
@@ -481,10 +543,22 @@ public class Solver2 {
 						}
 						if (no == tenseSentence && verbCategory.containsKey(verb) && no > sentenceNo && !s.type.contains("Compare") && !s.type.contains("Combine"))
 							return;
+						
 						if (no == tenseSentence && !verbCategory.containsKey(verb) && !eventTrackers.contains(core)) { 
 							if (s.name.contains("Past") && tense.contains("present"))
 								continue;
-							if (!s.name.contains("Present") && !s.name.contains("Past")) {
+							if (s.type.contains("Compare") || s.type.contains("Combine")) {
+								
+								if (stmts[0].contains("[[owner]1]") && instantiateMap.get("[[owner]1]").equals(core))
+									index = 0;
+								else if (stmts[0].contains("[[owner]2]") && instantiateMap.get("[[owner]2]").equals(core))
+									index = 0;
+								if (stmts[2].contains("[[owner]1]") && instantiateMap.get("[[owner]1]").equals(core))
+									index = 2;
+								else if (stmts[2].contains("[[owner]2]") && instantiateMap.get("[[owner]2]").equals(core))
+									index = 2;
+							}
+							else if (!s.name.contains("Present") && !s.name.contains("Past")) {
 								if (tense.contains("past")) {
 									/*System.out.println(pos + "|" +no + "|" + sentenceNo);
 									if (pos.equals("VBD") || pos.equals("VBN")) {
@@ -543,7 +617,7 @@ public class Solver2 {
 		}
 		for (int i = 0; i < 3; i++) {
 			String stmt = instantiatedSchema[i];
-			if (stmt == null) {
+			if (stmt == null && !instantiateMap.containsValue("?")) {
 				String copy = "";
 				String[] components = s.template.split("\\+")[i].split(" ");
 				for (String component : components) {
@@ -594,14 +668,14 @@ public class Solver2 {
     		if (edge.getTarget().toString().contains("NN")) {
     			System.out.println("in"+edge.getSource()+"|"+edge.getTarget()+"|"+edge.getRelation());
     			//assumes all proper nouns are people
-    			if (edge.getTarget().toString().contains("NNP"))
+    			if (edge.getTarget().toString().contains("NNP") && !edge.getTarget().lemma().equals("Q"))
     				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[owner]");
     			else if (edge.getRelation().toString().equals("nsubj"))
     				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[owner]");
     			else if (edge.getRelation().toString().contains("prep"))
     				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[place]");
-    			else if (edge.getRelation().toString().contains("dobj"))
-    				allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[object]");
+    			//else if (edge.getRelation().toString().contains("dobj"))
+    				//allWords.add("["+sentenceNo+"]"+edge.getTarget().lemma()+"[object]");
     		}
     		if (edge.getRelation().toString().equals("num")) {
     			Entity newEntity = new Entity();
@@ -609,6 +683,7 @@ public class Solver2 {
     				continue;
     			entity = edge.getSource();
     			newEntity.name = edge.getSource().lemma();
+    			allWords.add("["+sentenceNo+"]"+newEntity.name+"[object]");
     			newEntity.sentence = sentenceNo;
     			newEntity.value = Integer.parseInt(NumberNameToNumber.convert(edge.getTarget().originalText()));
     			//System.out.println(newEntity.name + "|" + newEntity.value);			
@@ -659,7 +734,7 @@ public class Solver2 {
 		    		}
 		    		if (verbCategory.containsKey(lemma)) {
 		    			type = verbCategory.get(lemma);
-		    			System.out.println("Trigger "+type);
+		    			System.out.println("Trigger "+type+"|"+pos);
 		    			if (!pos.contains("VB")) {
 		    				String deletedTense = "";
 		    				for (String tense : allTenses) {
@@ -689,8 +764,21 @@ public class Solver2 {
  		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
 	    pipeline = new StanfordCoreNLP(props);
-		String input = Parser.parse("Ram has 5 apples. Ram and Sita have 6 apples altogether. How many apples does Sita have?");
+	    String question = "";
+		String input = Parser.parse(question);
 		String text = expandPremises(input);
  		solveProb(text);
+ 		System.out.println("===========================================================================");
+ 		System.out.println("Question: ");
+ 		System.out.println(question);
+ 		System.out.println("===========================================================================");
+ 		System.out.println("Simplified Question: ");
+ 		System.out.println(input);
+ 		System.out.println("===========================================================================");
+ 		System.out.println("Solution: ");
+ 		for (String answer : answers) 
+ 			if (!question.contains(answer.trim()))
+ 				System.out.println(answer);
+ 		
  	}
 }
