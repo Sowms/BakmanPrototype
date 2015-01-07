@@ -162,18 +162,18 @@ public class Solver2 {
 		moreThan.type = "ComparePlus";
 		moreThan.name = "More Than Present";
 		schemas.add(moreThan);
-		Schema moreThanSingle = new Schema();
-		moreThanSingle.template = "[owner] had [Y] [object] + [owner] has [X] [object] [ComparePlus] + [owner] has [Z] [object]";
-		moreThanSingle.formula = "X + Y = Z";
-		moreThanSingle.type = "ComparePlus";
-		moreThanSingle.name = "More Than Present";
-		schemas.add(moreThanSingle);
 		Schema moreThanPast = new Schema();
 		moreThanPast.template = "[[owner]2] had [Y] [object] + [[owner]1] had [X] [object] [ComparePlus] than [[owner]2] + [[owner]1] had [Z] [object]";
 		moreThanPast.formula = "X + Y = Z";
 		moreThanPast.type = "ComparePlus";
 		moreThanPast.name = "More Than Past";
 		schemas.add(moreThanPast);
+		Schema moreThanSingle = new Schema();
+		moreThanSingle.template = "[owner] had [Y] [object] + [owner] has [X] [object] [ComparePlus] + [owner] has [Z] [object]";
+		moreThanSingle.formula = "X + Y = Z";
+		moreThanSingle.type = "ComparePlus";
+		moreThanSingle.name = "More Than Present";
+		schemas.add(moreThanSingle);
 		Schema lessThan = new Schema();
 		lessThan.template = "[[owner]2] has [Y] [object] + [[owner]1] has [X] [object] [CompareMinus] than [[owner]2] + [[owner]1] has [Z] [object]";
 		lessThan.formula = "Z + X = Y";
@@ -189,6 +189,12 @@ public class Solver2 {
 		//combine schema
 
 		Schema combineOwnerSingle = new Schema();
+		Schema combineOwner = new Schema();
+		combineOwner.template = "[[owner]1] has [Y] [object]  + [Combine] [[owner]1] and [[owner]2] has [Z] [object] + [[owner]2] has [X] [object]";
+		combineOwner.formula = "X + Y = Z";
+		combineOwner.type = "Combine";
+		combineOwner.name = "Combine Owner Present";
+		schemas.add(combineOwner);
 		combineOwnerSingle.template = "[owner] has [Y] [object]  + [Combine] [owner] has [Z] [object] + [owner] has [X] [object]";
 		combineOwnerSingle.formula = "X + Y = Z";
 		combineOwnerSingle.type = "Combine";
@@ -200,12 +206,7 @@ public class Solver2 {
 		combineOwnerSinglePast.type = "Combine";
 		combineOwnerSinglePast.name = "Combine Owner Single Past";
 		schemas.add(combineOwnerSinglePast);
-		Schema combineOwner = new Schema();
-		combineOwner.template = "[[owner]1] has [Y] [object]  + [Combine] [[owner]1] and [[owner]2] has [Z] [object] + [[owner]2] has [X] [object]";
-		combineOwner.formula = "X + Y = Z";
-		combineOwner.type = "Combine";
-		combineOwner.name = "Combine Owner Present";
-		schemas.add(combineOwner);
+		
 		
 	}
 	public static void instantiateSchema(String type, String lemma, int sentenceNo, String pos) {
@@ -321,7 +322,11 @@ public class Solver2 {
 				}
 			}
 			System.out.println("mmm"+copy+"|"+instantiateMap);
-			if (!copy.contains("null")) {
+			if (copy.contains("null")) {
+				instantiateMap = new HashMap<String,String>();
+				continue;
+			}
+			else {
 				instantiatedSchema[1] = copy;
 				break;
 			}
@@ -764,7 +769,7 @@ public class Solver2 {
  		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
 	    pipeline = new StanfordCoreNLP(props);
-	    String question = "";
+	    String question = "David gave 3 candies to Ruth, and John gave 2 candies to David. Now David has 4 candies more than Ruth has. How many candies does David have now, if Ruth had 7 candies in the beginning?";
 		String input = Parser.parse(question);
 		String text = expandPremises(input);
  		solveProb(text);
