@@ -48,6 +48,7 @@ public class Solver2 {
 	static LinkedHashSet<String> allWords = new LinkedHashSet<String>();
     static ArrayList<Entity> allEntities = new ArrayList<Entity>();
     static TreeSet<String> allTenses = new TreeSet<String>();
+    static String explanation = "";
     //static int schemaNo = 0;
     //static HashMap <String,String> instantiateMap = new HashMap<String,String>();
     //static String[] instantiatedSchema = new String[3];
@@ -77,7 +78,7 @@ public class Solver2 {
 		verbCategory.put("enter","TinP");
 		verbCategory.put("fall","TinP");
 		verbCategory.put("add","TinP");
-		verbCategory.put("take out","ToutP");
+		verbCategory.put("take","ToutP");
 		verbCategory.put("take away","ToutP");
 		verbCategory.put("take exit","ToutP");
 		verbCategory.put("go away","ToutP");
@@ -332,7 +333,6 @@ public class Solver2 {
 			}
 		}
 		Instantiation currentInstantiation = new Instantiation();
-		
 		currentInstantiation.instantiatedSchema = instantiatedSchema;
 		currentInstantiation.instantiateMap = instantiateMap;
 		currentInstantiation.s = applicableSchemas.get(0);
@@ -345,6 +345,8 @@ public class Solver2 {
 		String[] elements = formula.split(" ");
 		acceptedSchemas.remove(inst);
 		String question = null;
+		String arithmetic = "";
+		int solveIndex = -1;
 		for (int i=0; i<elements.length; i++) {
 			String element = elements[i];
 			if (element.equals("+") || element.equals("=")) 
@@ -354,6 +356,7 @@ public class Solver2 {
 				if (i==0) {
 					int value1 = Integer.parseInt(instantiateMap.get("["+elements[2]+"]"));
 					int value2 = Integer.parseInt(instantiateMap.get("["+elements[4]+"]"));
+					arithmetic = "("+value2+" - "+value1+")";
 					instantiateMap.put("["+element+"]",value2 - value1 + "");
 					break;
 				}
@@ -361,18 +364,49 @@ public class Solver2 {
 					int value1 = Integer.parseInt(instantiateMap.get("["+elements[0]+"]"));
 					int value2 = Integer.parseInt(instantiateMap.get("["+elements[4]+"]"));
 					instantiateMap.put("["+element+"]",value2 - value1 + "");
+					arithmetic = "("+value2+" - "+value1+")";
 					break;
 				}
 				if (i==4) {
 					int value1 = Integer.parseInt(instantiateMap.get("["+elements[0]+"]"));
 					int value2 = Integer.parseInt(instantiateMap.get("["+elements[2]+"]"));
+					arithmetic = "("+value1+" + "+value2+")";
 					instantiateMap.put("["+element+"]",value2 + value1 + "");
 					break;	
 				}
 			}
 		}
-		System.out.println("Answer:");
+		System.out.println("Explanation:");
 		String[] answerSchema = new String[3];
+		for (int i = 0; i < 3; i++) {
+			String copy = "";
+			String arithExplain = "";
+			boolean isQuestion = false;
+			String[] components = inst.s.template.split("\\+")[i].split(" ");
+			for (String component : components) {
+				if (component.equals(""))
+					continue;
+				if (component.equals(question)) {  
+					isQuestion = true;
+					arithExplain = copy + arithmetic+ " ";  
+				}
+				if (component.contains("[")) {
+					if (isQuestion && !component.equals(question))
+						arithExplain = arithExplain + instantiateMap.get(component) + " ";
+					copy = copy + instantiateMap.get(component) + " ";
+				}
+				else {
+					if (isQuestion)
+						arithExplain = arithExplain + component + " ";
+					copy = copy + component + " ";
+				}
+			}
+			if (isQuestion) 
+				explanation = explanation + arithExplain + "\n";
+			explanation = explanation + copy + "\n";
+		}
+		explanation = explanation + "\n";
+		//code repeat
 		for (int i = 0; i < 3; i++) {
 			String copy = "";
 			boolean isQuestion = false;
@@ -391,11 +425,6 @@ public class Solver2 {
 			System.out.println(copy);
 			answerSchema[i] = copy;
 			if (isQuestion) {
-				
-				/*boolean changeFlag = false;
-				for (String word : allWords) {
-					
-				}*/
 				if (changeTenseFlag) 
 					copy = copy.replace("had", "has");
 				answers.add(copy);
@@ -784,6 +813,9 @@ public class Solver2 {
  		for (String answer : answers) 
  			if (!question.contains(answer.trim()))
  				System.out.println(answer);
- 		
+ 		System.out.println("===========================================================================");
+ 		System.out.println("Explanation: ");
+ 		System.out.println(explanation);
+ 		System.out.println("===========================================================================");
  	}
 }
