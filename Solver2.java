@@ -378,9 +378,10 @@ public class Solver2 {
 		}
 		System.out.println("Explanation:");
 		String[] answerSchema = new String[3];
+		String arithExplain = "", finalans= "";
 		for (int i = 0; i < 3; i++) {
 			String copy = "";
-			String arithExplain = "";
+			String ans = "";
 			boolean isQuestion = false;
 			String[] components = inst.s.template.split("\\+")[i].split(" ");
 			for (String component : components) {
@@ -388,11 +389,14 @@ public class Solver2 {
 					continue;
 				if (component.equals(question)) {  
 					isQuestion = true;
-					arithExplain = copy + arithmetic+ " ";  
+					ans = copy + "?" + " ";
+					arithExplain = copy + arithmetic + " ";  
 				}
 				if (component.contains("[")) {
-					if (isQuestion && !component.equals(question))
+					if (isQuestion && !component.equals(question)) {
 						arithExplain = arithExplain + instantiateMap.get(component) + " ";
+						ans = ans + instantiateMap.get(component) + " ";
+					}
 					copy = copy + instantiateMap.get(component) + " ";
 				}
 				else {
@@ -401,11 +405,17 @@ public class Solver2 {
 					copy = copy + component + " ";
 				}
 			}
-			if (isQuestion) 
-				explanation = explanation + arithExplain + "\n";
-			explanation = explanation + copy + "\n";
+			if (isQuestion) {
+				explanation = explanation + ans + "\n";
+				finalans = copy;
+			}
+			else
+				explanation = explanation + copy + "\n";
 		}
-		explanation = explanation + "\n";
+		explanation = explanation + "-------------------------------\n";
+		explanation = explanation + arithExplain + "\n";
+		explanation = explanation + finalans + "\n-----------------------------\n\n";
+		
 		//code repeat
 		for (int i = 0; i < 3; i++) {
 			String copy = "";
@@ -798,7 +808,7 @@ public class Solver2 {
  		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse");
 	    pipeline = new StanfordCoreNLP(props);
-	    String question = "David gave 3 candies to Ruth, and John gave 2 candies to David. Now David has 4 candies more than Ruth has. How many candies does David have now, if Ruth had 7 candies in the beginning?";
+	    String question = "John had 5 apples. Mary gave him 3 apples. How many apples does John have now?";
 		String input = Parser.parse(question);
 		String text = expandPremises(input);
  		solveProb(text);
